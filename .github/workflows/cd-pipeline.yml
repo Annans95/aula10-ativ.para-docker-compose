@@ -3,7 +3,7 @@ name: Pipeline de CD - GHCR & Deploy via Docker Compose
 on:
   push:
     branches: [ "main" ]
-    tags: [ 'v*.*.*' ] # Dispara na criação de tags de versão (ex: v1.0.0)
+    tags: [ 'v*.*.*' ] # Dispara na criação de tags semânticas (ex: v1.0.0)
 
 permissions:
   contents: read
@@ -11,7 +11,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/minha-api-node
+  # Deixamos a base do nome genérica aqui para tratar a minúscula logo abaixo
 
 jobs:
   build-and-publish:
@@ -21,6 +21,13 @@ jobs:
     steps:
       - name: Checkout do Código
         uses: actions/checkout@v4
+
+      - name: Normalizar nome do repositório para minúsculas
+        id: vars
+        run: |
+          # Força todo o caminho do repositório para letras minúsculas
+          LOWER_REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_NAME=${LOWER_REPO}" >> $GITHUB_OUTPUT
 
       - name: Autenticação no GitHub Container Registry (GHCR)
         uses: docker/login-action@v3
@@ -33,7 +40,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ steps.vars.outputs.IMAGE_NAME }}
           tags: |
             type=raw,value=latest
             type=sha,prefix=
@@ -56,21 +63,20 @@ jobs:
       - name: Checkout do Repositório
         uses: actions/checkout@v4
 
-      - name: Gerar Arquivo de Variáveis (.env) para o Compose
+      - name: Gerar Arquivo .env Dinâmico para o Compose
         run: |
-          # Extrai a hash curta do commit para usar como tag única da imagem
+          # Normaliza o nome do repositório para minúsculas também no deploy
+          LOWER_REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           IMAGE_TAG=${GITHUB_SHA::7}
-          echo "REGISTRY_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" > .env
+          
+          echo "REGISTRY_IMAGE=${{ env.REGISTRY }}/${LOWER_REPO}" > .env
           echo "IMAGE_TAG=${IMAGE_TAG}" >> .env
-          echo "=== Arquivo .env gerado para o deploy ==="
+          echo "=== Configuração do arquivo .env ==="
           cat .env
 
-      - name: Executar Deploy no Ambiente de Homologação
+      - name: Executar Deploy no Ambiente
         run: |
-          echo "=== Efetuando pull da imagem no GHCR e atualizando contêineres ==="
-          # Baixa as imagens atualizadas declaradas no docker-compose.yml
-          docker compose pull
-          # Sobe/atualiza a infraestrutura em background
+          echo "=== Efetuando pull da nova imagem no GHCR ==="
+          docker compose pull app
           docker compose up -d --remove-orphans
-          # Exibe os contêineres em execução
           docker compose ps
