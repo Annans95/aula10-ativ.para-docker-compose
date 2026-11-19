@@ -30,6 +30,7 @@ jobs:
         run: npm test
         # O 'continue-on-error: true' garante que mesmo se os testes falharem, 
         # o workflow continuará para enviar o trace do resultado ao APM.
+        # teste
         continue-on-error: true
 
       - name: Enviar Traces para o Elastic APM
